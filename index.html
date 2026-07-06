@@ -712,22 +712,27 @@ function startSketch(data) {
     function drawNYCMap(p,S){ /* map outline removed */ }
 
     // 5-pointed star centered at (0,0), outer radius r.
-    function starShape(p, r){
-      const n=5, inner=r*0.42;
+    // Draws a wobbly hand-drawn open circle by stepping around it and
+    // nudging each vertex slightly with Perlin noise, giving a sketched feel.
+    function sketchCircle(p, r, seed){
+      const steps = 36;
+      const wobble = r * 0.12;
       p.beginShape();
-      for(let i=0;i<n*2;i++){
-        const angle=(Math.PI/n)*i - Math.PI/2;
-        const rad=i%2===0 ? r : inner;
-        p.vertex(Math.cos(angle)*rad, Math.sin(angle)*rad);
+      for(let i=0;i<=steps;i++){
+        const angle = (p.TWO_PI / steps) * i;
+        const nv = p.noise(seed + i * 0.4) * 2 - 1;
+        const rad = r + nv * wobble;
+        p.vertex(Math.cos(angle) * rad, Math.sin(angle) * rad);
       }
-      p.endShape(p.CLOSE);
+      p.endShape();
     }
 
     function plotEntry(p, entry, S){
       const col = getEmotionColor(entry.link);
       const isHidden = entry.hidden === true;
       const sizeScale = 0.7 + (entry.intensity / 10) * 1.1;
-      const baseR = Math.max(S*0.012, 6) * sizeScale;
+      const baseR = Math.max(S*0.009, 4) * sizeScale;
+      const seed = (entry.coords.lng * 1000) % 100 + (entry.coords.lat * 1000) % 100;
 
       const base = project(entry.coords.lng, entry.coords.lat);
       const jx = entry._jitter ? entry._jitter.x : 0;
@@ -739,32 +744,39 @@ function startSketch(data) {
 
       p.push();
       p.translate(wx, wy);
+
+      // Very faint glow behind the circle
       p.noStroke();
+      p.fill(...col, 18); p.ellipse(0,0,baseR*4.5,baseR*4.5);
+      p.fill(...col, 32); p.ellipse(0,0,baseR*2.8,baseR*2.8);
 
-      // Soft glow halos
-      p.fill(...col, 20); p.ellipse(0,0,baseR*5,baseR*5);
-      p.fill(...col, 40); p.ellipse(0,0,baseR*3,baseR*3);
-
-      // Star silhouette
-      p.fill(...col, 210); starShape(p, baseR);
+      // Hand-drawn open circle — colored stroke, no fill
+      p.noFill();
+      p.stroke(...col, 220);
+      p.strokeWeight(Math.max(1.2/zoom, 0.6));
+      sketchCircle(p, baseR, seed);
 
       if(img){
+        // Clip the illustration inside the circle
         const ctx = p.drawingContext;
-        const nr = baseR*0.7;
-        ctx.save(); ctx.globalAlpha = 0.92;
+        const nr = baseR*0.88;
+        ctx.save(); ctx.globalAlpha = 0.88;
         ctx.beginPath(); ctx.arc(0,0,nr,0,Math.PI*2); ctx.clip();
         p.imageMode(p.CENTER); p.image(img,0,0,nr*2,nr*2);
         ctx.restore();
-        p.noFill(); p.stroke(...col,200); p.strokeWeight(1.5/zoom);
-        p.ellipse(0,0,nr*2,nr*2);
       } else {
-        p.noStroke(); p.fill(255,255,255,180);
-        p.ellipse(0,0,baseR*0.5,baseR*0.5);
+        // Center dot — the star's "nucleus"
+        p.noStroke();
+        p.fill(...col, 255);
+        p.ellipse(0,0,baseR*0.38,baseR*0.38);
       }
 
+      // Hidden entries: dashed outer ring as the only hint
       if(isHidden){
-        p.noFill(); p.stroke(...col,160); p.strokeWeight(1/zoom);
-        p.ellipse(0,0,baseR*2.4,baseR*2.4);
+        p.noFill(); p.stroke(...col,100); p.strokeWeight(0.8/zoom);
+        p.drawingContext.setLineDash([3/zoom, 4/zoom]);
+        p.ellipse(0,0,baseR*2.2,baseR*2.2);
+        p.drawingContext.setLineDash([]);
       }
       p.pop();
 
